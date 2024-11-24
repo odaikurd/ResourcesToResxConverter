@@ -17,25 +17,45 @@ if (-not (Test-Path $resgenPath)) {
 }
 
 # Process all .resources files
-Get-ChildItem -Path $sourceFolder -Recurse -Filter "*.resources" | ForEach-Object {
+Get-ChildItem -Path $sourceFolder -Filter "*.resources" | ForEach-Object {
     $sourceFile = $_.FullName
 
-    # Create destination file path based on folder structure
-    $relativePath = $_.FullName.Substring($sourceFolder.Length + 1) # Relative path inside 'res' folder
-    $relativeResxPath = [System.IO.Path]::ChangeExtension($relativePath, ".resx") # Change extension to .resx
-    $destinationFile = Join-Path $destinationFolder $relativeResxPath
+    # Extract the relative path (based on file name structure)
+    try {
+        $fileNameWithoutExtension = $_.BaseName
 
-    # Ensure destination directory exists
-    $destinationDir = Split-Path $destinationFile
-    Ensure-FolderExists $destinationDir
+        # Split the filename into parts by `.`
+        $relativePathParts = $fileNameWithoutExtension -split '\.'
+        
+        # Ensure there are enough parts to create a path
+        if ($relativePathParts.Length -lt 2) {
+            Write-Warning "Skipping file with unexpected naming format: $sourceFile"
+            return
+        }
 
-    # Convert using resgen
-    & $resgenPath $sourceFile $destinationFile
+        # Construct the relative folder path
+        $subPath = $relativePathParts[0..($relativePathParts.Length - 2)] -join '\'
+        $fileName = $relativePathParts[-1] + ".resx"
+        $relativePath = Join-Path -Path $subPath -ChildPath $fileName
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Converted: $sourceFile -> $destinationFile"
-    } else {
-        Write-Warning "Failed to convert: $sourceFile"
+        # Construct the full destination path
+        $destinationFile = Join-Path -Path $destinationFolder -ChildPath $relativePath
+
+        # Ensure the destination directory exists
+        $destinationDir = Split-Path $destinationFile
+        Ensure-FolderExists $destinationDir
+
+        # Convert using resgen
+        & $resgenPath $sourceFile $destinationFile
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "Converted: $sourceFile -> $destinationFile"
+        } else {
+            Write-Warning "Failed to convert: $sourceFile"
+        }
+    } catch {
+        Write-Warning "Error processing file: $sourceFile"
+        Write-Warning $_.Exception.Message
     }
 }
 
